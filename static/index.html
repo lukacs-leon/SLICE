@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SLICE — Lunar Interferometry Simulator</title>
+    <style>
+        :root {
+            --bg: #090d16;
+            --card-bg: #131c2e;
+            --border: #1e293b;
+            --accent: #7c3aed;
+            --accent-hover: #6d28d9;
+            --text: #f8fafc;
+            --text-dim: #94a3b8;
+            --blue-glow: #38bdf8;
+            --success: #10b981;
+        }
+        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; }
+        
+        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
+        h1 { color: #a78bfa; margin: 0; font-size: 20px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+        .subtitle { color: var(--text-dim); font-size: 11px; margin-top: 2px; }
+
+        .panel { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 15px; margin-bottom: 15px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3); }
+        .panel-title { font-size: 13px; font-weight: 600; color: #cbd5e1; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+
+        .controls-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; align-items: center; }
+        
+        /* 4 csempe egymás mellett */
+        .sim-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+        
+        .card { background: rgba(15, 23, 42, 0.8); border: 1px solid var(--border); border-radius: 10px; padding: 10px; text-align: center; display: flex; flex-direction: column; justify-content: space-between; }
+        .card h3 { font-size: 13px; color: var(--text-dim); margin: 0 0 6px 0; font-weight: 500; }
+
+        /* Hatalmas, kitöltő canvas (290x290px) */
+        canvas { background: #020617; display: block; margin: 4px auto; border-radius: 6px; border: 1px solid var(--border); width: 290px; height: 290px; }
+        
+        button, select, label.file-btn { background: var(--accent); color: #fff; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 12px; transition: all 0.2s; display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+        button:hover, label.file-btn:hover { background: var(--accent-hover); transform: translateY(-1px); }
+        button.secondary { background: #334155; color: #e2e8f0; }
+        button.secondary:hover { background: #475569; }
+        button.danger { background: #ef4444; }
+        
+        input, select.inline-input { background: #020617; color: #fff; border: 1px solid var(--border); padding: 4px 6px; border-radius: 5px; text-align: center; font-size: 11px; }
+        label { font-size: 11px; color: var(--text-dim); }
+        input[type="file"] { display: none; }
+        
+        .stat { color: var(--blue-glow); font-weight: 600; }
+        .stats-bar { display: flex; gap: 20px; background: rgba(2, 6, 23, 0.6); padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border); font-size: 12px; margin-bottom: 12px; align-items: center; }
+        
+        .list-box { max-height: 110px; overflow-y: auto; background: #020617; border: 1px solid var(--border); border-radius: 6px; padding: 6px; font-size: 11px; text-align: left; margin-top: 6px; }
+        .list-item { display: flex; justify-content: space-between; align-items: center; padding: 3px 6px; border-bottom: 1px solid #1e293b; gap: 4px; }
+    </style>
+</head>
+<body>
+    <header>
+        <div>
+            <h1>🔭 SLICE Simulator</h1>
+            <div class="subtitle">Selenian Long-baseline Interferometric Constellation for Exoplanets</div>
+        </div>
+        <div style="display: flex; gap: 6px;">
+            <button class="secondary" onclick="saveConfig()" style="padding:5px 10px;">💾 Save</button>
+            <label class="file-btn secondary" for="loadfile" style="padding:5px 10px;">📂 Load</label>
+            <input type="file" id="loadfile" onchange="loadConfig(event)">
+        </div>
+    </header>
+    
+    <!-- SETUP PHASE -->
+    <div class="panel">
+        <div class="panel-title"><span>⚙️ Phase 1: Setup, Sky Builder & Editable Registry</span></div>
+        <div class="controls-grid">
+            <div><label>Wavelength (m):</label><br><input type="number" id="wave" value="0.000001" step="1e-7"></div>
+            <div><label>FOV (deg):</label><br><input type="number" id="fov" value="10.0"></div>
+            <div>
+                <label>Add Sky Object:</label><br>
+                <select id="objType" style="background:#020617; color:#fff; border:1px solid var(--border); padding:4px; border-radius:5px;">
+                    <option value="star">Star 🌟</option>
+                    <option value="gas_cloud">Gas Cloud ☁️</option>
+                    <option value="planet">Planet 🪐</option>
+                    <option value="galaxy">Galaxy 🌀</option>
+                </select>
+            </div>
+            <div style="display: flex; align-items: flex-end; gap: 5px;">
+                <button onclick="addObject()" style="padding:5px 10px;">+ Add</button>
+                <button onclick="sendConfig()" style="background: var(--success); padding:5px 10px;">✔ Apply</button>
+            </div>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 10px;">
+            <div>
+                <label>Sky Objects Registry (x, y, T, Size):</label>
+                <div id="objList" class="list-box"></div>
+            </div>
+            <div>
+                <label>Telescope Array Registry:</label>
+                <div id="telList" class="list-box"></div>
+                <div style="margin-top: 6px; display: flex; gap: 5px; align-items: center; flex-wrap: wrap;">
+                    <input type="text" id="telId" value="T5" style="width: 35px;">
+                    <input type="number" id="telLat" placeholder="Lat" value="10" style="width: 40px;">
+                    <input type="number" id="telLon" placeholder="Lon" value="10" style="width: 40px;">
+                    <button onclick="addTelescope()" class="secondary" style="padding:4px 8px;">+ Add</button>
+                    <button onclick="addRandomTelescopes()" style="background: var(--accent); padding:4px 8px;">🎲 Add X</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SIMULATION PHASE -->
+    <div class="panel">
+        <div class="panel-title">
+            <span>🚀 Phase 2: Live Simulation & Correlator</span>
+            <div style="display: flex; gap: 5px; align-items: center;">
+                <button onclick="startSim()" style="padding:5px 10px;">▶ Start</button>
+                <button class="secondary" onclick="pauseSim()" style="padding:5px 10px;">⏸ Pause</button>
+                <button class="danger" onclick="stopSim()" style="padding:5px 10px;">⏹ Stop</button>
+                <label>Speed:</label>
+                <select id="speedSelect" onchange="changeSpeed()" style="background:#020617; color:#fff; border:1px solid var(--border); padding:4px; border-radius:5px;">
+                    <option value="1">1x</option>
+                    <option value="10">10x</option>
+                    <option value="1000">1000x</option>
+                    <option value="100000">⚡ Max</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="stats-bar">
+            <div>🛰️ Active Telescopes: <span id="statTelCount" class="stat">0</span></div>
+            <div>📏 Total Baseline Array: <span id="statBaseline" class="stat">0.00</span> km[cite: 3]</div>
+            <div>⏱️ Time Step: <span id="timeStep" class="stat">0</span></div>
+            <div>🔄 Moon Rotation: <span id="rotVal" class="stat">0.00</span> rad</div>
+        </div>
+
+        <!-- 4 csempe egy sorban -->
+        <div class="sim-grid">
+            <div class="card">
+                <h3>Global Moon View</h3>
+                <canvas id="moonCanvas" width="290" height="290"></canvas>
+            </div>
+
+            <div class="card">
+                <h3>Target Sky Map</h3>
+                <canvas id="skyCanvas" width="290" height="290"></canvas>
+            </div>
+
+            <div class="card">
+                <h3>UV-Plane Coverage</h3>
+                <canvas id="uvCanvas" width="290" height="290"></canvas>
+                <p style="font-size: 11px; margin:2px 0 0 0;">Sampled Baselines: <span id="uvCount" class="stat">0</span></p>
+            </div>
+
+            <div class="card">
+                <h3>Reconstructed Image</h3>
+                <canvas id="reconCanvas" width="290" height="290"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentConfig = {
+            wavelength: 0.000001,
+            fov: 10.0,
+            objects: [
+                { type: "star", x: 1.0, y: 1.0, temp: 8000, size: 1.2 },
+                { type: "gas_cloud", x: -2.0, y: -1.5, temp: 4000, size: 2.0 }
+            ],
+            telescopes: [
+                { id: "T1", lat: 15.0, lon: 30.0 },
+                { id: "T2", lat: -20.0, lon: -40.0 },
+                { id: "T3", lat: 45.0, lon: -10.0 }
+            ]
+        };
+
+        let pollInterval = 1000;
+
+        function updateUILists() {
+            const objList = document.getElementById('objList');
+            objList.innerHTML = currentConfig.objects.map((o, i) => `
+                <div class="list-item">
+                    <span><b>${o.type}</b></span>
+                    <div>
+                        x:<input type="number" value="${o.x}" style="width:32px;" onchange="updateObj(${i}, 'x', this.value)">
+                        y:<input type="number" value="${o.y}" style="width:32px;" onchange="updateObj(${i}, 'y', this.value)">
+                        T:<input type="number" value="${o.temp}" style="width:38px;" onchange="updateObj(${i}, 'temp', this.value)">
+                        sz:<input type="number" value="${o.size || 1.0}" step="0.1" style="width:35px;" onchange="updateObj(${i}, 'size', this.value)">
+                    </div>
+                    <button class="secondary" style="padding: 1px 4px; font-size:9px;" onclick="removeObj(${i})">✕</button>
+                </div>
+            `).join('');
+
+            const telList = document.getElementById('telList');
+            telList.innerHTML = currentConfig.telescopes.map((t, i) => `
+                <div class="list-item">
+                    <span><b>${t.id}</b></span>
+                    <div>
+                        lat:<input type="number" value="${t.lat}" style="width:40px;" onchange="updateTel(${i}, 'lat', this.value)">
+                        lon:<input type="number" value="${t.lon}" style="width:40px;" onchange="updateTel(${i}, 'lon', this.value)">
+                    </div>
+                    <button class="secondary" style="padding: 1px 4px; font-size:9px;" onclick="removeTel(${i})">✕</button>
+                </div>
+            `).join('');
+        }
+
+        function updateObj(i, field, val) {
+            currentConfig.objects[i][field] = parseFloat(val);
+            sendConfig();
+        }
+
+        function updateTel(i, field, val) {
+            if (field === 'lat' || field === 'lon') {
+                currentConfig.telescopes[i][field] = parseFloat(val);
+            } else {
+                currentConfig.telescopes[i][field] = val;
+            }
+            sendConfig();
+        }
+
+        function addObject() {
+            const type = document.getElementById('objType').value;
+            currentConfig.objects.push({ type: type, x: 0.0, y: 0.0, temp: 6000, size: 1.0 });
+            updateUILists();
+            sendConfig();
+        }
+
+        function removeObj(i) { currentConfig.objects.splice(i, 1); updateUILists(); sendConfig(); }
+
+        function addTelescope() {
+            const id = document.getElementById('telId').value;
+            const lat = parseFloat(document.getElementById('telLat').value);
+            const lon = parseFloat(document.getElementById('telLon').value);
+            currentConfig.telescopes.push({ id, lat, lon });
+            updateUILists();
+            sendConfig();
+        }
+
+        function addRandomTelescopes() {
+            const count = prompt("How many random telescopes to add?", "3");
+            if (!count || isNaN(count)) return;
+            for (let k = 0; k < parseInt(count); k++) {
+                const id = "Tx" + Math.floor(Math.random() * 900 + 100);
+                const lat = parseFloat((Math.random() * 140 - 70).toFixed(1));
+                const lon = parseFloat((Math.random() * 360 - 180).toFixed(1));
+                currentConfig.telescopes.push({ id, lat, lon });
+            }
+            updateUILists();
+            sendConfig();
+        }
+
+        function removeTel(i) { currentConfig.telescopes.splice(i, 1); updateUILists(); sendConfig(); }
+
+        async function sendConfig() {
+            currentConfig.wavelength = parseFloat(document.getElementById('wave').value);
+            currentConfig.fov = parseFloat(document.getElementById('fov').value);
+
+            await fetch('/api/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(currentConfig)
+            });
+        }
+
+        async function startSim() { await fetch('/api/start', { method: 'POST' }); }
+        async function pauseSim() { await fetch('/api/pause', { method: 'POST' }); }
+        async function stopSim() { await fetch('/api/stop', { method: 'POST' }); }
+
+        async function changeSpeed() {
+            const speed = parseInt(document.getElementById('speedSelect').value);
+            pollInterval = (speed === 1) ? 1000 : 100;
+
+            await fetch('/api/speed', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ speed: speed })
+            });
+
+            restartPolling();
+        }
+
+        async function saveConfig() {
+            const res = await fetch('/api/export');
+            const data = await res.json();
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'slice_config.json';
+            a.click();
+        }
+
+        async function loadConfig(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const text = await file.text();
+            const data = JSON.parse(text);
+
+            currentConfig = data;
+            document.getElementById('wave').value = data.wavelength;
+            document.getElementById('fov').value = data.fov;
+            updateUILists();
+
+            await fetch('/api/import', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+        }
+
+        function drawMatrix(canvasId, matrix, isBlue = false) {
+            const canvas = document.getElementById(canvasId);
+            const ctx = canvas.getContext('2d');
+            const size = matrix.length;
+            const targetSize = 290;
+            const imgData = ctx.createImageData(targetSize, targetSize);
+            const factor = size / targetSize;
+
+            for (let y = 0; y < targetSize; y++) {
+                for (let x = 0; x < targetSize; x++) {
+                    let nx = Math.floor(x * factor);
+                    let ny = Math.floor(y * factor);
+                    let val = matrix[ny][nx];
+                    let idx = (y * targetSize + x) * 4;
+                    let c = Math.min(255, Math.max(0, parseInt(val * 255)));
+                    
+                    if (isBlue) {
+                        imgData.data[idx] = 14;
+                        imgData.data[idx+1] = c > 0 ? 165 : 10;
+                        imgData.data[idx+2] = c > 0 ? 233 : 20;
+                        imgData.data[idx+3] = 255;
+                    } else {
+                        imgData.data[idx] = c;
+                        imgData.data[idx+1] = c > 128 ? (c - 128) * 2 : 10;
+                        imgData.data[idx+2] = 255 - c;
+                        imgData.data[idx+3] = 255;
+                    }
+                }
+            }
+            ctx.putImageData(imgData, 0, 0);
+        }
+
+        function drawMoon(angle, telescopes) {
+            const canvas = document.getElementById('moonCanvas');
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, 290, 290);
+
+            ctx.beginPath();
+            ctx.arc(145, 145, 115, 0, 2 * Math.PI);
+            ctx.fillStyle = '#1e293b';
+            ctx.fill();
+            ctx.strokeStyle = '#475569';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            ctx.fillStyle = '#38bdf8';
+            telescopes.forEach((t) => {
+                let radLon = (t.lon * Math.PI / 180) + angle;
+                let radLat = (t.lat * Math.PI / 180);
+                let x = 145 + 100 * Math.cos(radLat) * Math.sin(radLon);
+                let y = 145 - 100 * Math.sin(radLat);
+
+                if (Math.cos(radLon) > -0.2) {
+                    ctx.beginPath();
+                    ctx.arc(x, y, 5, 0, 2 * Math.PI);
+                    ctx.fill();
+                    ctx.font = '10px sans-serif';
+                    ctx.fillStyle = '#f8fafc';
+                    ctx.fillText(t.id, x + 6, y + 3);
+                    ctx.fillStyle = '#38bdf8';
+                }
+            });
+        }
+
+        let pollTimer = null;
+
+        function restartPolling() {
+            if (pollTimer) clearInterval(pollTimer);
+            pollTimer = setInterval(async () => {
+                try {
+                    const res = await fetch('/api/state');
+                    const state = await res.json();
+                    
+                    document.getElementById('timeStep').innerText = state.time_step;
+                    document.getElementById('uvCount').innerText = state.uv_coverage_count;
+                    document.getElementById('rotVal').innerText = state.moon_rotation_angle.toFixed(2);
+                    document.getElementById('statTelCount').innerText = state.telescope_count;
+                    document.getElementById('statBaseline').innerText = state.total_baseline_km.toLocaleString();
+
+                    if (state.sky_map) drawMatrix('skyCanvas', state.sky_map);
+                    if (state.uv_coverage) drawMatrix('uvCanvas', state.uv_coverage, true);
+                    if (state.reconstructed_map) drawMatrix('reconCanvas', state.reconstructed_map);
+                    if (state.telescopes) drawMoon(state.moon_rotation_angle, state.telescopes);
+                } catch (e) {
+                    console.error("Polling error:", e);
+                }
+            }, pollInterval);
+        }
+
+        updateUILists();
+        sendConfig();
+        restartPolling();
+    </script>
+</body>
+</html>
